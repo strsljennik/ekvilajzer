@@ -4,44 +4,65 @@
   <meta charset="UTF-8" />
   <title>Zeno FM Ekvilajzer</title>
   <style>
-    body { margin: 0; background: black; }
-    canvas { display: block; width: 100%; height: 150px; }
+    body { margin: 0; background: black; color: white; font-family: sans-serif; }
+    canvas { display: block; width: 100%; height: 150px; background: #111; }
+    audio { width: 100%; margin-top: 10px; }
+    #log { font-size: 12px; height: 100px; overflow-y: scroll; background: #222; padding: 5px; }
   </style>
 </head>
 <body>
+<h2>Zeno FM Ekvilajzer</h2>
 <audio id="radioStream" src="/radio" autoplay controls></audio>
 <canvas id="visualizer"></canvas>
+<div id="log"></div>
 
 <script>
   const audio = document.getElementById('radioStream');
   const canvas = document.getElementById('visualizer');
   const ctx = canvas.getContext('2d');
+  const logDiv = document.getElementById('log');
 
   canvas.width = window.innerWidth;
   canvas.height = 150;
 
+  function log(msg) {
+    const time = new Date().toLocaleTimeString();
+    logDiv.innerHTML += `[${time}] ${msg}<br>`;
+    logDiv.scrollTop = logDiv.scrollHeight;
+    console.log(msg);
+  }
+
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const source = audioCtx.createMediaElementSource(audio);
-  const analyser = audioCtx.createAnalyser();
 
-  source.connect(analyser);
-  analyser.connect(audioCtx.destination);
+  let source;
+  let analyser;
 
-  analyser.fftSize = 256;
-  const bufferLength = analyser.frequencyBinCount;
-  const dataArray = new Uint8Array(bufferLength);
+  function startAudio() {
+    source = audioCtx.createMediaElementSource(audio);
+    analyser = audioCtx.createAnalyser();
+
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+
+    analyser.fftSize = 256;
+    log('Audio context i analyser pokrenuti.');
+
+    draw();
+  }
 
   function draw() {
     requestAnimationFrame(draw);
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
     analyser.getByteFrequencyData(dataArray);
 
-    ctx.fillStyle = 'black';
+    ctx.fillStyle = '#111';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const barWidth = (canvas.width / bufferLength) * 2.5;
     let x = 0;
 
-    for(let i = 0; i < bufferLength; i++) {
+    for (let i = 0; i < bufferLength; i++) {
       const barHeight = dataArray[i];
       ctx.fillStyle = 'lime';
       ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
@@ -49,7 +70,19 @@
     }
   }
 
-  draw();
+  audio.addEventListener('play', () => {
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    log('Audio je pokrenut.');
+    if (!source) startAudio();
+  });
+
+  audio.addEventListener('error', (e) => {
+    log('Greška na audio playeru: ' + e.message);
+  });
+
+  log('Stranica učitana. Čekam da audio krene.');
 </script>
 </body>
 </html>
