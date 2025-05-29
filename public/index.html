@@ -1,27 +1,72 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Zeno FM Ekvilajzer - Mreža kockica</title>
-  <style>
-    body { margin: 0; background: black; color: white; font-family: sans-serif; }
-    canvas { display: block; width: 100%; height: 150px; background: #111; }
-    audio { width: 100%; margin-top: 10px; }
-    #log { font-size: 12px; height: 100px; overflow-y: scroll; background: #222; padding: 5px; }
-  </style>
+<meta charset="UTF-8" />
+<title>Zeno FM Ekvilajzer - Drag & Resize</title>
+<style>
+  body {
+    margin: 0; background: #111; color: white; font-family: sans-serif;
+    overflow: hidden;
+  }
+  #container {
+    position: absolute;
+    top: 50px; left: 50px;
+    width: 300px;
+    height: 150px;
+    border: 2px solid #0f0;
+    border-radius: 8px;
+    background: #222;
+    user-select: none;
+    cursor: move;
+    display: flex;
+    flex-direction: column;
+  }
+  #visualizer {
+    flex: 1;
+    width: 100%;
+    background: #111;
+    border-bottom: 2px solid #0f0;
+    border-radius: 6px 6px 0 0;
+    display: block;
+  }
+  #audio-controls {
+    padding: 5px;
+    background: #000;
+    text-align: center;
+  }
+  #resize-handle {
+    width: 15px;
+    height: 15px;
+    background: #0f0;
+    cursor: se-resize;
+    align-self: flex-end;
+    margin: 2px 5px 5px 0;
+    border-radius: 3px;
+  }
+</style>
 </head>
 <body>
-<h2>Zeno FM Ekvilajzer - Mreža kockica</h2>
-<audio id="radioStream" src="/radio" autoplay controls></audio>
-<canvas id="visualizer"></canvas>
+
+<div id="container">
+  <canvas id="visualizer"></canvas>
+  <div id="audio-controls">
+    <audio id="radioStream" src="/radio" controls autoplay></audio>
+  </div>
+  <div id="resize-handle"></div>
+</div>
 
 <script>
-  const audio = document.getElementById('radioStream');
+  const container = document.getElementById('container');
   const canvas = document.getElementById('visualizer');
   const ctx = canvas.getContext('2d');
+  const audio = document.getElementById('radioStream');
 
-  canvas.width = window.innerWidth;
-  canvas.height = 150;
+  // Inicijalne dimenzije
+  let width = 300;
+  let height = 150;
+
+  canvas.width = width;
+  canvas.height = height;
 
   let audioCtx;
   let source;
@@ -30,25 +75,19 @@
   function setupAudio() {
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+      source = audioCtx.createMediaElementSource(audio);
+      analyser = audioCtx.createAnalyser();
+
+      source.connect(analyser);
+      analyser.connect(audioCtx.destination);
+
+      analyser.fftSize = 256;
     }
+
     if (audioCtx.state === 'suspended') {
       audioCtx.resume();
     }
-
-    if (source) {
-      source.disconnect();
-    }
-    if (analyser) {
-      analyser.disconnect();
-    }
-
-    source = audioCtx.createMediaElementSource(audio);
-    analyser = audioCtx.createAnalyser();
-
-    source.connect(analyser);
-    analyser.connect(audioCtx.destination);
-
-    analyser.fftSize = 256;
   }
 
   function draw() {
@@ -64,26 +103,26 @@
     ctx.fillStyle = '#111';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Parametri mreže
-    const cols = bufferLength;  // broj kockica po horizontali
-    const rows = 10;            // broj kockica po vertikali
+    // Mreža parametri
+    const cols = bufferLength;
+    const rows = 10;
     const cellWidth = canvas.width / cols;
     const cellHeight = canvas.height / rows;
 
-    // Crtanje horizontalnih linija
+    // Horizontalne linije
     ctx.strokeStyle = '#222';
     ctx.lineWidth = 1;
     for (let r = 0; r <= rows; r++) {
-      let y = r * cellHeight;
+      const y = r * cellHeight;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(canvas.width, y);
       ctx.stroke();
     }
 
-    // Crtanje vertikalnih linija
+    // Vertikalne linije
     for (let c = 0; c <= cols; c++) {
-      let x = c * cellWidth;
+      const x = c * cellWidth;
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, canvas.height);
@@ -92,23 +131,21 @@
 
     // Crtanje kockica sa gradijentom
     for (let i = 0; i < bufferLength; i++) {
-      let magnitude = dataArray[i] / 255; // 0..1
-      let heightCells = Math.floor(magnitude * rows); // koliko redova da popuni
+      const magnitude = dataArray[i] / 255;
+      const heightCells = Math.floor(magnitude * rows);
 
       for (let r = 0; r < heightCells; r++) {
-        let x = i * cellWidth;
-        let y = canvas.height - (r + 1) * cellHeight;
+        const x = i * cellWidth;
+        const y = canvas.height - (r + 1) * cellHeight;
 
-        // Gradient unutar kockice
-        let grad = ctx.createLinearGradient(x, y, x + cellWidth, y + cellHeight);
+        const grad = ctx.createLinearGradient(x, y, x + cellWidth, y + cellHeight);
         grad.addColorStop(0, `rgba(0,255,0,${0.8 * (1 - r/rows)})`);
         grad.addColorStop(1, `rgba(0,100,0,${0.8 * (1 - r/rows)})`);
 
         ctx.fillStyle = grad;
         ctx.fillRect(x + 1, y + 1, cellWidth - 2, cellHeight - 2);
 
-        // Border sa gradijentom (zelena nijansa)
-        let borderGrad = ctx.createLinearGradient(x, y, x + cellWidth, y + cellHeight);
+        const borderGrad = ctx.createLinearGradient(x, y, x + cellWidth, y + cellHeight);
         borderGrad.addColorStop(0, `rgba(0,255,0,${0.9 * (1 - r/rows)})`);
         borderGrad.addColorStop(1, `rgba(0,150,0,${0.9 * (1 - r/rows)})`);
 
@@ -124,10 +161,73 @@
     draw();
   });
 
+  // Drag funkcionalnost
+  let isDragging = false;
+  let dragStartX, dragStartY;
+
+  container.addEventListener('mousedown', (e) => {
+    if (e.target.id === 'resize-handle') return; // ne vući ako resize handle
+    isDragging = true;
+    dragStartX = e.clientX - container.offsetLeft;
+    dragStartY = e.clientY - container.offsetTop;
+    container.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('mouseup', () => {
+    isDragging = false;
+    container.style.cursor = 'move';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    let x = e.clientX - dragStartX;
+    let y = e.clientY - dragStartY;
+    // granice da ne izadje van ekrana
+    x = Math.max(0, Math.min(window.innerWidth - container.offsetWidth, x));
+    y = Math.max(0, Math.min(window.innerHeight - container.offsetHeight, y));
+    container.style.left = x + 'px';
+    container.style.top = y + 'px';
+  });
+
+  // Resize funkcionalnost
+  const resizeHandle = document.getElementById('resize-handle');
+  let isResizing = false;
+  let startWidth, startHeight, startX, startY;
+
+  resizeHandle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    isResizing = true;
+    startWidth = container.offsetWidth;
+    startHeight = container.offsetHeight;
+    startX = e.clientX;
+    startY = e.clientY;
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+    let newWidth = startWidth + (e.clientX - startX);
+    let newHeight = startHeight + (e.clientY - startY);
+
+    newWidth = Math.max(150, Math.min(window.innerWidth - container.offsetLeft, newWidth));
+    newHeight = Math.max(80, Math.min(window.innerHeight - container.offsetTop, newHeight));
+
+    container.style.width = newWidth + 'px';
+    container.style.height = newHeight + 'px';
+
+    canvas.width = newWidth;
+    canvas.height = newHeight - 40; // ostavi mesto za kontrole
+  });
+
+  window.addEventListener('mouseup', () => {
+    isResizing = false;
+  });
+
+  // Prilagodi canvas dimenzije ako menjaš veličinu prozora
   window.addEventListener('resize', () => {
-    canvas.width = window.innerWidth;
-    canvas.height = 150;
+    canvas.width = container.offsetWidth;
+    canvas.height = container.offsetHeight - 40;
   });
 </script>
+
 </body>
 </html>
