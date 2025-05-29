@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Zeno FM Ekvilajzer</title>
+  <title>Zeno FM Ekvilajzer - Mreža kockica</title>
   <style>
     body { margin: 0; background: black; color: white; font-family: sans-serif; }
     canvas { display: block; width: 100%; height: 150px; background: #111; }
@@ -11,33 +11,37 @@
   </style>
 </head>
 <body>
-<h2>Zeno FM Ekvilajzer</h2>
+<h2>Zeno FM Ekvilajzer - Mreža kockica</h2>
 <audio id="radioStream" src="/radio" autoplay controls></audio>
 <canvas id="visualizer"></canvas>
-<div id="log"></div>
 
 <script>
   const audio = document.getElementById('radioStream');
   const canvas = document.getElementById('visualizer');
   const ctx = canvas.getContext('2d');
-  const logDiv = document.getElementById('log');
 
   canvas.width = window.innerWidth;
   canvas.height = 150;
 
-  function log(msg) {
-    const time = new Date().toLocaleTimeString();
-    logDiv.innerHTML += `[${time}] ${msg}<br>`;
-    logDiv.scrollTop = logDiv.scrollHeight;
-    console.log(msg);
-  }
-
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
+  let audioCtx;
   let source;
   let analyser;
 
-  function startAudio() {
+  function setupAudio() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+
+    if (source) {
+      source.disconnect();
+    }
+    if (analyser) {
+      analyser.disconnect();
+    }
+
     source = audioCtx.createMediaElementSource(audio);
     analyser = audioCtx.createAnalyser();
 
@@ -45,44 +49,85 @@
     analyser.connect(audioCtx.destination);
 
     analyser.fftSize = 256;
-    log('Audio context i analyser pokrenuti.');
-
-    draw();
   }
 
   function draw() {
+    if (!analyser) return;
+
     requestAnimationFrame(draw);
-    const bufferLength = analyser.frequencyBinCount;
+
+    const bufferLength = analyser.frequencyBinCount; // 128
     const dataArray = new Uint8Array(bufferLength);
     analyser.getByteFrequencyData(dataArray);
 
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#111';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const barWidth = (canvas.width / bufferLength) * 2.5;
-    let x = 0;
+    // Parametri mreže
+    const cols = bufferLength;  // broj kockica po horizontali
+    const rows = 10;            // broj kockica po vertikali
+    const cellWidth = canvas.width / cols;
+    const cellHeight = canvas.height / rows;
 
+    // Crtanje horizontalnih linija
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    for (let r = 0; r <= rows; r++) {
+      let y = r * cellHeight;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
+
+    // Crtanje vertikalnih linija
+    for (let c = 0; c <= cols; c++) {
+      let x = c * cellWidth;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+    }
+
+    // Crtanje kockica sa gradijentom
     for (let i = 0; i < bufferLength; i++) {
-      const barHeight = dataArray[i];
-      ctx.fillStyle = 'lime';
-      ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-      x += barWidth + 1;
+      let magnitude = dataArray[i] / 255; // 0..1
+      let heightCells = Math.floor(magnitude * rows); // koliko redova da popuni
+
+      for (let r = 0; r < heightCells; r++) {
+        let x = i * cellWidth;
+        let y = canvas.height - (r + 1) * cellHeight;
+
+        // Gradient unutar kockice
+        let grad = ctx.createLinearGradient(x, y, x + cellWidth, y + cellHeight);
+        grad.addColorStop(0, `rgba(0,255,0,${0.8 * (1 - r/rows)})`);
+        grad.addColorStop(1, `rgba(0,100,0,${0.8 * (1 - r/rows)})`);
+
+        ctx.fillStyle = grad;
+        ctx.fillRect(x + 1, y + 1, cellWidth - 2, cellHeight - 2);
+
+        // Border sa gradijentom (zelena nijansa)
+        let borderGrad = ctx.createLinearGradient(x, y, x + cellWidth, y + cellHeight);
+        borderGrad.addColorStop(0, `rgba(0,255,0,${0.9 * (1 - r/rows)})`);
+        borderGrad.addColorStop(1, `rgba(0,150,0,${0.9 * (1 - r/rows)})`);
+
+        ctx.strokeStyle = borderGrad;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 1, y + 1, cellWidth - 2, cellHeight - 2);
+      }
     }
   }
 
   audio.addEventListener('play', () => {
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-    log('Audio je pokrenut.');
-    if (!source) startAudio();
+    setupAudio();
+    draw();
   });
 
-  audio.addEventListener('error', (e) => {
-    log('Greška na audio playeru: ' + e.message);
+  window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = 150;
   });
-
-  log('Stranica učitana. Čekam da audio krene.');
 </script>
 </body>
 </html>
